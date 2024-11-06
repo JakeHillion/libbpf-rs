@@ -214,17 +214,17 @@ impl SkeletonBuilder {
     }
 
     /// Build BPF programs and generate the skeleton at path `output`
-    pub fn build_and_generate<P: AsRef<Path>>(&mut self, output: P) -> Result<()> {
-        self.build()?;
+    pub fn build_and_generate<P: AsRef<Path>>(&mut self, output: P) -> Result<Vec<u8>> {
+        let warnings = self.build()?;
         self.generate(output)?;
 
-        Ok(())
+        Ok(warnings)
     }
 
     // Build BPF programs without generating a skeleton.
     //
     // [`SkeletonBuilder::source`] must be set for this to succeed.
-    pub fn build(&mut self) -> Result<()> {
+    pub fn build(&mut self) -> Result<Vec<u8>> {
         let source = self
             .source
             .as_ref()
@@ -261,9 +261,7 @@ impl SkeletonBuilder {
             self.skip_clang_version_check,
             self.clang_args.clone(),
         )
-        .with_context(|| format!("failed to build `{}`", source.display()))?;
-
-        Ok(())
+        .with_context(|| format!("failed to build `{}`", source.display()))
     }
 
     // Generate a skeleton at path `output` without building BPF programs.
