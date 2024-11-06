@@ -171,7 +171,7 @@ fn compile_one(
     out: &Path,
     clang: &Path,
     clang_args: &[OsString],
-) -> Result<()> {
+) -> Result<Vec<u8>> {
     if debug {
         println!("Building {}", source.display());
     }
@@ -234,7 +234,10 @@ fn compile_one(
     // system specific and temporary paths. That can render our generated
     // skeletons unstable, potentially rendering them unsuitable for inclusion
     // in version control systems. So strip this information.
-    strip_dwarf_info(out).with_context(|| format!("Failed to strip object file {}", out.display()))
+    strip_dwarf_info(out)
+        .with_context(|| format!("Failed to strip object file {}", out.display()))?;
+
+    Ok(output.stderr)
 }
 
 fn compile(
@@ -243,31 +246,30 @@ fn compile(
     clang: &Path,
     mut clang_args: Vec<OsString>,
     target_dir: &Path,
-) -> Result<()> {
+) -> Result<Vec<Vec<u8>>> {
     let header_dir = extract_libbpf_headers_to_disk(target_dir)?;
     if let Some(dir) = header_dir {
         clang_args.push(OsString::from("-I"));
         clang_args.push(dir.into_os_string());
     }
 
-    for obj in objs {
-        let stem = obj.path.file_stem().with_context(|| {
-            format!(
-                "Could not calculate destination name for obj={}",
-                obj.path.display()
-            )
-        })?;
+    objs.iter()
+        .map(|obj| -> Result<_> {
+            let stem = obj.path.file_stem().with_context(|| {
+                format!(
+                    "Could not calculate destination name for obj={}",
+                    obj.path.display()
+                )
+            })?;
 
-        let mut dest_name = stem.to_os_string();
-        dest_name.push(".o");
+            let mut dest_name = stem.to_os_string();
+            dest_name.push(".o");
 
-        let mut dest_path = obj.out.to_path_buf();
-        dest_path.push(&dest_name);
-        fs::create_dir_all(&obj.out)?;
-        compile_one(debug, &obj.path, &dest_path, clang, &clang_args)?;
-    }
-
-    Ok(())
+            let mut dest_path = obj.out.to_path_buf();
+            dest_path.push(&dest_name);
+            fs::create_dir_all(&obj.out)?;
+            compile_one(debug, &obj.path, &dest_path, clang, &clang_args)
+    }).collect::<Result<_, _>>()
 }
 
 fn extract_clang_or_default(clang: Option<&PathBuf>) -> PathBuf {
@@ -317,7 +319,7 @@ pub fn build_single(
     clang: Option<&PathBuf>,
     skip_clang_version_checks: bool,
     mut clang_args: Vec<OsString>,
-) -> Result<()> {
+) -> Result<Vec<u8>> {
     let clang = extract_clang_or_default(clang);
     check_clang(debug, &clang, skip_clang_version_checks)?;
     let header_parent_dir = tempdir()?;
@@ -332,9 +334,7 @@ pub fn build_single(
     // BPF. See https://lkml.org/lkml/2020/2/21/1000.
     clang_args.push(OsString::from("-fno-stack-protector"));
 
-    compile_one(debug, source, out, &clang, &clang_args)?;
-
-    Ok(())
+    compile_one(debug, source, out, &clang, &clang_args)
 }
 
 #[test]
