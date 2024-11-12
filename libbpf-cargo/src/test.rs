@@ -785,7 +785,8 @@ fn test_skeleton_builder_clang_opts() {
         .debug(true)
         .clang("clang")
         .build_and_generate(skel.path())
-        .unwrap_err();
+        .err()
+        .unwrap();
 
     // Should succeed b/c we defined the macro
     SkeletonBuilder::new()
